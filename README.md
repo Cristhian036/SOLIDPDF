@@ -1,0 +1,2 @@
+# SOLIDPDF
+SolidWorks (.SLDDRW)
