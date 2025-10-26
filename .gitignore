@@ -3,6 +3,7 @@
 build/
 dist/*
 !dist/convert_slddrw_to_pdf.exe
+!dist/SolidWorks_Converter.exe
 *.spec
 
 # Python cache and temp files
