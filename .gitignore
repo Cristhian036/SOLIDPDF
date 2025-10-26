@@ -1,0 +1,21 @@
+
+# PyInstaller build folders
+build/
+dist/*
+!dist/convert_slddrw_to_pdf.exe
+*.spec
+
+# Python cache and temp files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.tmp
+*.log
+
+# VSCode settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db

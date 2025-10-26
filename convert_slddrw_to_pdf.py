@@ -1,19 +1,93 @@
 
+
 import os
 import win32com.client
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from PyPDF2 import PdfMerger
 import tempfile
+import threading
 
-def seleccionar_archivos():
-    root = tk.Tk()
-    root.withdraw()
-    archivos = filedialog.askopenfilenames(
-        title="Selecciona los planos .SLDDRW",
-        filetypes=[("SolidWorks Drawings", "*.slddrw")]
-    )
-    return list(archivos)
+class App:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Convertir SLDDRW a PDF")
+        self.archivos = []
+
+        self.frame = tk.Frame(root, padx=10, pady=10)
+        self.frame.pack()
+
+        self.btn_seleccionar = tk.Button(self.frame, text="Seleccionar archivos", command=self.seleccionar_archivos)
+        self.btn_seleccionar.grid(row=0, column=0, pady=5, sticky="ew")
+
+        self.btn_convertir = tk.Button(self.frame, text="Convertir a PDF", command=self.iniciar_conversion, state="disabled")
+        self.btn_convertir.grid(row=1, column=0, pady=5, sticky="ew")
+
+        self.progress = ttk.Progressbar(self.frame, orient="horizontal", length=300, mode="determinate")
+        self.progress.grid(row=2, column=0, pady=10)
+
+        self.status = tk.Label(self.frame, text="Seleccione archivos para comenzar.")
+        self.status.grid(row=3, column=0, pady=5)
+
+    def seleccionar_archivos(self):
+        archivos = filedialog.askopenfilenames(
+            title="Selecciona los planos .SLDDRW",
+            filetypes=[("SolidWorks Drawings", "*.slddrw")]
+        )
+        self.archivos = list(archivos)
+        if self.archivos:
+            self.status.config(text=f"{len(self.archivos)} archivo(s) seleccionado(s).")
+            self.btn_convertir.config(state="normal")
+        else:
+            self.status.config(text="No se seleccionaron archivos.")
+            self.btn_convertir.config(state="disabled")
+
+    def iniciar_conversion(self):
+        self.btn_convertir.config(state="disabled")
+        self.btn_seleccionar.config(state="disabled")
+        self.progress['value'] = 0
+        self.status.config(text="Iniciando conversión...")
+        threading.Thread(target=self.convertir_archivos).start()
+
+    def convertir_archivos(self):
+        if not self.archivos:
+            self.status.config(text="No se seleccionaron archivos.")
+            self.btn_convertir.config(state="disabled")
+            self.btn_seleccionar.config(state="normal")
+            return
+        try:
+            swApp = win32com.client.Dispatch('SldWorks.Application')
+            swApp.Visible = False
+        except Exception as e:
+            self.status.config(text=f"Error iniciando SolidWorks: {e}")
+            self.btn_seleccionar.config(state="normal")
+            return
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pdfs = []
+            total = len(self.archivos)
+            for idx, slddrw_path in enumerate(self.archivos, 1):
+                pdf = exportar_a_pdf(swApp, slddrw_path, temp_dir)
+                if pdf:
+                    pdfs.append(pdf)
+                self.progress['value'] = (idx / total) * 100
+                self.status.config(text=f"Procesando {idx}/{total}: {os.path.basename(slddrw_path)}")
+                self.root.update_idletasks()
+            swApp.ExitApp()
+            if not pdfs:
+                self.status.config(text="No se generaron PDFs.")
+                self.btn_seleccionar.config(state="normal")
+                return
+            output_folder = os.path.dirname(self.archivos[0])
+            output_pdf = os.path.join(output_folder, "Planos_Combinados.pdf")
+            merger = PdfMerger()
+            for pdf in pdfs:
+                merger.append(pdf)
+            merger.write(output_pdf)
+            merger.close()
+            self.status.config(text=f"PDF combinado guardado en: {output_pdf}")
+            messagebox.showinfo("Éxito", f"PDF combinado guardado en:\n{output_pdf}")
+        self.btn_seleccionar.config(state="normal")
+        self.btn_convertir.config(state="normal")
 
 def exportar_a_pdf(swApp, slddrw_path, temp_dir):
     from win32com.client import VARIANT
@@ -41,44 +115,11 @@ def exportar_a_pdf(swApp, slddrw_path, temp_dir):
     finally:
         swApp.CloseDoc(os.path.basename(slddrw_path))
 
+
 def main():
-    archivos = seleccionar_archivos()
-    if not archivos:
-        print("No se seleccionaron archivos.")
-        return
-
-    swApp = win32com.client.Dispatch('SldWorks.Application')
-    swApp.Visible = False
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        pdfs = []
-        for slddrw_path in archivos:
-            pdf = exportar_a_pdf(swApp, slddrw_path, temp_dir)
-            if pdf:
-                pdfs.append(pdf)
-
-        swApp.ExitApp()
-
-        if not pdfs:
-            print("No se generaron PDFs.")
-            return
-
-        # Guardar automáticamente el PDF combinado en la carpeta del primer archivo seleccionado
-        output_folder = os.path.dirname(archivos[0])
-        output_pdf = os.path.join(output_folder, "Planos_Combinados.pdf")
-
-        # Unir los PDFs
-        merger = PdfMerger()
-        for pdf in pdfs:
-            merger.append(pdf)
-        merger.write(output_pdf)
-        merger.close()
-        print(f"PDF combinado guardado en: {output_pdf}")
-        try:
-            import tkinter.messagebox as messagebox
-            messagebox.showinfo("Éxito", f"PDF combinado guardado en:\n{output_pdf}")
-        except Exception:
-            pass
+    root = tk.Tk()
+    app = App(root)
+    root.mainloop()
 
 if __name__ == "__main__":
     main()
